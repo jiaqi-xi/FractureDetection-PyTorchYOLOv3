@@ -1,13 +1,6 @@
 .git
-.DS_Store
-build
-*.egg-info
-dist
-data/coco
-backup
 __pycache__
-
-/change_padding
+/change_padding/*
 /checkpoints/*
 /crop/*
 /data/custom/images/*
