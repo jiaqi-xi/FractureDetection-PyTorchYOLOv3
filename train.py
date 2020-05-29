@@ -24,6 +24,7 @@ import torch.optim as optim
 import warnings
 import traceback
 import sys
+from AP50test import AP50_standard_test
 
 def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
 
@@ -37,18 +38,21 @@ if __name__ == "__main__":
     warnings.filterwarnings('ignore')
     parser = argparse.ArgumentParser()
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
-    parser.add_argument("--batch_size", type=int, default=8, help="size of each image batch")
-    parser.add_argument("--gradient_accumulations", type=int, default=8, help="number of gradient accums before step")
+    parser.add_argument("--batch_size", type=int, default=2, help="size of each image batch")
+    parser.add_argument("--gradient_accumulations", type=int, default=16, help="number of gradient accums before step")
     parser.add_argument("--model_def", type=str, default="config/yolov3-custom.cfg", help="path to model definition file")
     parser.add_argument("--data_config", type=str, default="config/custom.data", help="path to data config file")
     parser.add_argument("--pretrained_weights", type=str, default = "checkpoints/yolov3_ckpt_final.pth", help="if specified starts from checkpoint model")
     parser.add_argument("--n_cpu", type=int, default=14, help="number of cpu threads to use during batch generation")
-    parser.add_argument("--img_size", type=int, default=512, help="size of each image dimension")
+    parser.add_argument("--img_size", type=int, default=1024, help="size of each image dimension")
     parser.add_argument("--checkpoint_interval", type=int, default=10, help="interval between saving model weights")
     parser.add_argument("--evaluation_interval", type=int, default=5, help="interval evaluations on validation set")
     parser.add_argument("--compute_map", default=True, help="if True computes mAP every tenth batch")
     parser.add_argument("--multiscale_training", default=False, help="allow for multi-scale training")
     parser.add_argument("--crop_probility", type=float, default= 0, help = "probility to crop the picture like a microscope")
+    parser.add_argument("--lr", type=float, default= 0.001, help = "learning rate")
+    parser.add_argument("--checkpoints_dir", type=str, default="checkpoints", help="path to checkpoints dir")
+
     opt = parser.parse_args()
     print(opt)
 
@@ -57,7 +61,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #device = torch.device("cpu")
     os.makedirs("output", exist_ok=True)
-    os.makedirs("checkpoints", exist_ok=True)
+    os.makedirs(opt.checkpoints_dir, exist_ok=True)
 
     # Get data configuration
     data_config = parse_data_config(opt.data_config)
@@ -91,7 +95,7 @@ if __name__ == "__main__":
         collate_fn=dataset.collate_fn,
     )
 
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters(), lr = opt.lr)
 
     metrics = [
         "grid_size",
@@ -175,7 +179,7 @@ if __name__ == "__main__":
                 conf_thres=0.5,
                 nms_thres=0.5,
                 img_size=opt.img_size,
-                batch_size=2,
+                batch_size=opt.batch_size
             )
             evaluation_metrics = [
                 ("val_precision", precision.mean()),
@@ -188,8 +192,10 @@ if __name__ == "__main__":
             # Print class APs and mAP
             ap_table = [["Index", "Class name", "AP"]]
             for i, c in enumerate(ap_class):
-                ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
-            print(AsciiTable(ap_table).table)
+                #ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
+                print(f"+ Class '{c}' ({class_names[c]}) - Precision50: {precision[i]}")
+                print(f"+ Class '{c}' ({class_names[c]}) - Recall50: {recall[i]}")
+            #print(AsciiTable(ap_table).table)
             print(f"---- mAP {AP.mean()}")
 
             print("\n---- Evaluating Model ----")
@@ -201,7 +207,7 @@ if __name__ == "__main__":
                 conf_thres=0.5,
                 nms_thres=0.5,
                 img_size=opt.img_size,
-                batch_size=2,
+                batch_size=opt.batch_size
             )
             evaluation_metrics = [
                 ("val_precision", precision.mean()),
@@ -214,10 +220,13 @@ if __name__ == "__main__":
             # Print class APs and mAP
             ap_table = [["Index", "Class name", "AP"]]
             for i, c in enumerate(ap_class):
-                ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
-            print(AsciiTable(ap_table).table)
+                #ap_table += [[c, class_names[c], "%.5f" % AP[i]]]
+                print(f"+ Class '{c}' ({class_names[c]}) - Precision50: {precision[i]}")
+                print(f"+ Class '{c}' ({class_names[c]}) - Recall50: {recall[i]}")
+            #print(AsciiTable(ap_table).table)
             print(f"---- mAP {AP.mean()}")
-
-        if epoch % opt.checkpoint_interval == 0:
-            torch.save(model.state_dict(), f"checkpoints/yolov3_ckpt_%d.pth" % (epoch+1))
-    torch.save(model.state_dict(), "checkpoints/yolov3_ckpt_final.pth")
+            if AP.mean()>0.05:
+                torch.save(model.state_dict(), opt.checkpoints_dir + f"/good_%.4f_ckpt_%d.pth" % (AP.mean(), epoch))
+        if epoch % opt.checkpoint_interval == 1:
+            torch.save(model.state_dict(), opt.checkpoints_dir + f"/yolov3_ckpt_%d.pth" % (epoch))
+    torch.save(model.state_dict(), opt.checkpoints_dir+"/yolov3_ckpt_final.pth")
