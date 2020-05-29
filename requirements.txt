@@ -7,3 +7,7 @@ tensorboard
 terminaltables
 pillow
 tqdm
+Cython
+pycocotools
+scikit-image
+numpy==1.17.0
